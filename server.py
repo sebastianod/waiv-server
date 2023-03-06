@@ -6,6 +6,7 @@ from flask_cors import CORS
 import json
 from operator import itemgetter
 import io
+import os
 import base64  # to turn svg to string and later to json
 
 
@@ -121,10 +122,4 @@ def my_function():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
-
-# This code converts to base 64 which can be converted easily online back to an svg
-# -----Convert svg to base64-----#
-
-    # with open('test.svg', 'rb') as file:
-    #     encoded_svg = base64.b64encode(file.read()) # svg->base64
+    app.run(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
