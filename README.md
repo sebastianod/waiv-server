@@ -86,7 +86,7 @@ This function sends the values to make the wave as described above and then rece
 
 It decodes the encoded svg and then sets it as **the** svg text of the wave, ready for use.
 
-```
+```javascript
 export const sendReceiveData = async (data, setterFunction) => {
     const response = await fetch("http://127.0.0.1:5000/api/getwave", { //use api route for any api related task
       method: "POST",
@@ -104,7 +104,7 @@ export const sendReceiveData = async (data, setterFunction) => {
 
 The setterFunction is the function that sets the svg text of the wave. In our app, that would be `setSvgText`. For example, in our Features component, when a user clicks the *get wave* button:
 
-```
+```javascript
 const Features = () => {
   const { values } = useContext(ValuesContext); //values to send to py
   const { svgText, setSvgText } = useContext(WaveContext); //our wave
@@ -140,7 +140,7 @@ The data itself is stored and passed down through the useContext hook.
 ├── ...
  ```
 In the index.js file, we provide the context in these files to the app:
-```
+```javascript
 ...
 <WaveProvider>
   <ValuesProvider>
@@ -152,3 +152,146 @@ In the index.js file, we provide the context in these files to the app:
 * The reason why our values have their own ValuesContext component is because they are set by the Slider and ColorPicker components, which are children of the Features component. The values are sent to the API either from the Features component through the *Get Wave* button, or directly through dropping focus on a Slider or ColorPicker component.
 
 * That is the reason why we also have WaveContext component. The values are sent from several components, and the function sending the values, `sendReceiveData` *(from api.js)*, also receives the svg text of the wave. Therefore, the svg text of the wave can be set from Features or its children: Slider and ColorPicker components, through `sendReceiveData`.
+
+
+## Python Backend, with Flask
+The backend of Waiv is a REST api made with flask. Python handles the incoming values such as height, wave color and amplitude and generates a wave svg image using matplotlib.
+
+We already mentioned how data [comes in](#data-sent) from the user and how it [comes out](#data-received) of the api. We also looked at how the data coming out of the api is [handled](#sendreceivedata) by the frontend. 
+
+Let's look at how to set up our environment and then treat the incoming data.
+
+### Setup
+We'd like to use a local virtual environment for python so as help to ensure the project's reproducibility, isolation, and make it easier to manage. This saves time and reduces the likelihood of errors or issues, you know exactly what packages you need and avoid conflicts with python versions and libraries.
+
+#### Creating a virtual environment (windows)
+
+To create a virtual environment on windows, on the command line, cd over to the desired folder, in our case the *server* folder, and type
+```
+python -m venv virtualenv
+```
+This will make a folder called *virtualenv* with a fresh install of python through the *venv* module (which creates python virtual environments). The current standard is to use venv, it is only used with Python 3.3 or higher and is included in the Python standard library. For a more detailed read on python virtual environments and even how to reproduce them elsewhere, see [this post](https://www.dataquest.io/blog/a-complete-guide-to-python-virtual-environments/).
+
+#### Using it
+
+This python virtual environment comes loaded with the pip library, so we can use it to install libraries later on. But first, how do we use the python just installed?
+
+```
+source virtualenv/Scripts/activate
+```
+This will select our local virtual environment version of python for use. We should see a *(virtualenv)* text on our commandline. From here on out, we can install any needed library as usual, such as flask:
+```
+pip install Flask
+```
+As a note, pip may refer to pip2 or pip3, depending on your system's configuration. Read [here](https://stackoverflow.com/questions/40832533/pip-or-pip3-to-install-packages-for-python-3/40832677#40832677) for more on that. 
+
+We can run our app through:
+```
+python app.py
+```
+Where *app.py* is either *waveGen.py* or *server.py* in our case (local or non local).
+
+In order to deactivate it, simply type:
+```
+deactivate
+```
+
+
+### Flask
+
+
+#### Locally
+We follow the [simplest flask pattern](https://flask.palletsprojects.com/en/2.2.x/quickstart/#a-minimal-application) for our api. In our `server.py` file We create an api endpoint `/api/getwave` as:
+
+``` python
+from flask import Flask
+
+app = Flask(__name__)
+
+@app.route('/api/getwave', methods=['POST']) #/api/ important
+def wave_generation():
+  # --------------receive values--------------#
+    values = request.get_json()  # convert JSON data to python dict
+  #...
+  #--------Generate wave and encode it--------#
+  #...
+  #-----------------Return--------------------#
+  # return the response as JSON
+    return jsonify(response_data)  # jsonify is a flask wrapper
+
+if __name__ == '__main__': 
+    app.run(debug=True) # Locally ran for development
+
+```
+We can then run the flask server by typing:
+```
+python server.py
+```
+
+This will serve the app by default in `http://127.0.0.1:5000`. This means if we want to make a post request to our api, we should use the endpoint `http://127.0.0.1:5000/api/getwave` to do so. [Postman](https://www.postman.com/) is good for testing this out later on. Oh and, using this number form of *localhost* seemed a lot less problematic in my case.
+
+#### Connecting with our React frontend locally
+In order for the React frontend to talk to our Flask backend, we need a few things first in order to match where they're going to meet.
+
+1. Install [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS). It's a life saver. And use it in our app:
+```python
+#...
+from flask_cors import CORS
+#...
+app = Flask(__name__) #init flask app
+CORS(app) #Use CORS
+```
+2. Add `"proxy": "http://127.0.0.1:5000/"` to our `package.json` file, over at the React frontend. The proxy server will handle the routing of the requests to the correct backend server our api is sending stuff to.
+```json
+//package.json...
+{
+  "name": "wave-maker",
+  "version": "0.1.0",
+  "private": true,
+  "proxy": "http://127.0.0.1:5000/",
+//...
+``` 
+3. When fetching from the React frontend, use the full path:
+```javascript
+//...
+const response = await fetch("http://127.0.0.1:5000/api/getwave", {
+      method: "POST", 
+//...
+```
+**Note on local runs**
+
+Here we're using flask's own development server which is a single-threaded server that is not optimized for handling multiple requests concurrently. Thus this is good for local use only, for development.
+
+
+
+#### Non locally
+In order to run our flask app in a non-local environment, or rather, in a hosted environment where we can potentially have multiple requests concurrently or have high traffic, we need more than flask's development server. For that, we use [gunicorn](https://docs.gunicorn.org/en/stable/) as our server instead. We must install gunicorn and change the last part of our file's code to:
+``` python
+if __name__ == '__main__':
+    app.run(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
+```
+Where the `run()` method starts a local development server on the specified IP address and port. The host parameter is set to 0.0.0.0, which means the server will be accessible from any network interface. The port parameter is set to the value of the PORT environment variable, which may be set by the hosting environment *(Render.com in my case)* or default to 8080 if the variable is not set.
+
+The debug parameter is set to False, which turns off Flask's debug mode, which is recommended for production. 
+
+#### Using gunicorn
+
+Non locally, and **not** on windows, the syntax to run our gunicorn server is:
+```
+gunicorn app_name:app
+```
+Where app_name refers to the name of your Python file that contains the Flask application, and app is the name of the Flask object in that file.
+
+In our case it'd be:
+```
+gunicorn server:app
+```
+But this doesn't run on windows. This is basically left for render.com to do.
+
+#### Running on [render.com](https://render.com/)
+
+Sign up using your github account and make your backend folder into its own github repo (same as the frontend folder), then deploy the repo with the following:
+  
+  1. Change the Python version of the app by setting the PYTHON_VERSION environment variable to the desired and supported version. It's a key value pair: ![render python](https://raw.githubusercontent.com/sebastianod/waveMaker/master/render_python.png)
+  2. Under settings, set `gunicorn` to run the app as we already [know](#using-gunicorn): ![render gunicorn](https://raw.githubusercontent.com/sebastianod/waveMaker/master/render_gunicorn.png)
+  
